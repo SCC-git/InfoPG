@@ -73,6 +73,34 @@ def train_adv_infopg_5(k_levels):
     return data, policies, optimizers, hyper_params
 
 
+def eval_adv_infopg_5_rendered(k_levels):
+    hyper_params = {
+        'encoding_size': 300,
+        'policy_latent_size': 20,
+        'lr': 0.001,
+        'epochs': 1000,
+        'n_agents': 5,
+        'max_cycles': 200,
+        'max_grad_norm': 0.75,
+        'communicate': True,
+        'transfer_experiment': {
+            'name': '5agent_infopg(k=2)',
+            'order': [0, 1, 2, 3, 4]
+        },
+        'time_penalty': 0.007,
+        'early_reward_benefit': 0.25,
+        'batch_size': 4,
+        'k-levels': k_levels,
+        'scheduler': None,
+        'adv': 'normal',
+    }
+
+    render = True
+
+    data, policies, optimizers = test_piston_with_hyperparams(hyper_params, verbose=True, render=render)
+    return data, policies, optimizers, hyper_params
+
+
 def train_infopg_5(k_levels):
     hyper_params = {
         'encoding_size': 300,
@@ -133,6 +161,8 @@ if __name__ == '__main__':
         data, policies, optimizers, hyper_params = train_with_consensus_5()
     elif args.method == 'a2c':
         data, policies, optimizers, hyper_params = train_a2c()
+    elif args.method == 'eval_adv':
+        data, policies, optimizers, hyper_params = eval_adv_infopg_5_rendered(args.k)
     else:
         raise Exception(args.method + " isnt accepted")
 
