@@ -78,7 +78,7 @@ def eval_adv_infopg_5_rendered(k_levels):
         'encoding_size': 300,
         'policy_latent_size': 20,
         'lr': 0.001,
-        'epochs': 1000,
+        'epochs': 5,
         'n_agents': 5,
         'max_cycles': 200,
         'max_grad_norm': 0.75,
@@ -95,9 +95,7 @@ def eval_adv_infopg_5_rendered(k_levels):
         'adv': 'normal',
     }
 
-    render = True
-
-    data, policies, optimizers = test_piston_with_hyperparams(hyper_params, verbose=True, render=render)
+    data, policies, optimizers = test_piston_with_hyperparams(hyper_params, verbose=True, eval=True, render=True)
     return data, policies, optimizers, hyper_params
 
 

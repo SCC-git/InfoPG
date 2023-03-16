@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 
-def test_piston_with_hyperparams(hyper_params, verbose, render = False):
+def test_piston_with_hyperparams(hyper_params, verbose, eval = False, render = False):
     if torch.cuda.is_available():
         device=torch.device("cuda:0")
         print('**Using: ', torch.cuda.get_device_name(device))
@@ -83,7 +83,15 @@ def test_piston_with_hyperparams(hyper_params, verbose, render = False):
             raise Exception("%s isnt supported yet" % (hyper_params['scheduler']['type']))
     else:
         schedulers = None
-    policies, optimizers, summary_stats = env.loop(user_params, policies, optimizers, schedulers)
+    if not eval:
+        policies, optimizers, summary_stats = env.loop(user_params, policies, optimizers, schedulers)
+    else:
+        if hyper_params['transfer_experiment'] is None:
+            raise Exception('In order to eval, you need to provide a source directory')
+        if render:
+            policies, optimizers, summary_stats = env.eval(user_params, policies, optimizers, schedulers, render=render)
+        else:
+            policies, optimizers, summary_stats = env.eval(user_params, policies, optimizers, schedulers)
     return summary_stats, policies, optimizers
 
 def create_policies_from_experiment(hyper_params, device):
@@ -94,7 +102,7 @@ def create_policies_from_experiment(hyper_params, device):
     if len(piston_order) != hyper_params['n_agents']:
         raise Exception('Must put in an ordering that is equal to the number of required agents')
     lr = hyper_params['lr']
-    files = os.listdir(os.path.join('experiments', 'final_models', 'pistonball', experiment_name))
+    files = os.listdir(os.path.join('..', 'experiments', 'final_models', 'pistonball', experiment_name))
     files = list(filter(lambda x: '.pt' in x, files))
     if len(set(files)) < len(set(piston_order)):
         raise Exception("Agents aren't the ones from the transfer experiments")
@@ -104,7 +112,7 @@ def create_policies_from_experiment(hyper_params, device):
     action_space = 3
     for i in range(0, len(piston_order)):
         agent_name = piston_order[i]
-        data = torch.load(os.path.join('experiments', 'final_models', 'pistonball', experiment_name, 'piston_%s.pt' % (agent_name)), device)
+        data = torch.load(os.path.join('..', 'experiments', 'final_models', 'pistonball', experiment_name, 'piston_%s.pt' % (agent_name)), device)
         print('giving %s, %s experimental policy' % ('piston_%s' % (i), agent_name))
         policies['piston_%s' % (i)] = PistonPolicy(encoding_size, policy_latent_size, action_space, device, 'normal',
                                                    model_state_dict=data['policy'])

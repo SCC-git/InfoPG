@@ -212,11 +212,12 @@ class BatchEnv(ABC):
                 loss.backward(retain_graph=True)
         return epoch_data, iterations/self.N_AGENTS
 
-    def conclude_epoch(self, policies, optimizers, schedulers):
-        for agent in self.AGENT_NAMES:
-            optimizers[agent].step()
-            if schedulers is not None:
-                schedulers[agent].step()
+    def conclude_epoch(self, policies, optimizers, schedulers, eval=False):
+        if not eval:
+            for agent in self.AGENT_NAMES:
+                optimizers[agent].step()
+                if schedulers is not None:
+                    schedulers[agent].step()
 
         self.clear_memory(policies)
 

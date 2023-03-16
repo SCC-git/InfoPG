@@ -108,6 +108,100 @@ class PistonEnv(BatchEnv):
 
         return policies, optimizers, summary_stats
 
+    def eval(self, user_params: Dict, policies: Dict[str, PistonPolicy], optimizers: Dict[str, torch.optim.Optimizer], schedulers, render = False):
+        """
+        Executes evaluation loop on batch environment
+        :param user_params: dict of user params
+        :param policies: dict of policies, mapping agent_name(str) -> Policy()
+        :param optimizers: dict of optimizers, mapping agent_name(str) -> Optimizer()
+        :return: policies, optimizers, summary_stats
+        """
+
+        device = user_params['device']
+        alex_encoder = Encoder(device)
+        epochs = user_params['epochs']
+        verbose = user_params['verbose']
+        communicate = user_params['communicate']
+        max_grad_norm = user_params['max_grad_norm']
+        time_penalty = user_params['time_penalty']
+        early_reward_benefit = user_params['early_reward_benefit']
+        if 'k-levels' in user_params.keys():
+            k_levels = user_params['k-levels']
+        else:
+            k_levels = 1
+        print('**Using K-Levels: ', k_levels)
+
+        if 'consensus_update' in user_params.keys():
+            consensus_update = user_params['consensus_update']
+        else:
+            consensus_update = False
+        print('**Using Consensus-Update: ', consensus_update)
+
+        summary_stats = []
+        with torch.no_grad():
+            for epoch in range(0, epochs):
+                if verbose:
+                    print('Trial: %s' % (epoch))
+                observations = self.batch_reset()
+                for step in range(self.MAX_CYCLES):
+                    num_left_batches = np.count_nonzero(self.DONE_ENVS == False)  # number of environments that aren't done
+                    left_batches = np.where(self.DONE_ENVS == False)[0]  # indeces of batches that aren't done (length is num_left_batches)
+                    if num_left_batches == 0:
+                        break
+
+                    memory = self.initialize_memory()
+
+                    with torch.no_grad():
+                        for agent in self.AGENT_NAMES:
+                            observations[agent] = alex_encoder(observations[agent])
+
+                    policy_initial = {}
+                    for agent in self.AGENT_NAMES:
+                        initial_policy_distribution, state_val = policies[agent].forward(observations[agent], 0, None)
+                        for batch_ix in range(0, num_left_batches):
+                            memory[agent][left_batches[batch_ix]].state_val = state_val[batch_ix]
+                        policy_initial[agent] = initial_policy_distribution
+
+                    actions = {agent_name: [-1 for _ in range(0, num_left_batches)] for agent_name in self.AGENT_NAMES}
+                    if communicate:
+                        policy_initial = self.k_level_communication(policies, policy_initial, num_left_batches, left_batches, k_levels)
+
+                    for agent in self.AGENT_NAMES:
+                        final_policy_distribution = policies[agent].forward(policy_initial[agent], 2, None).to('cpu')
+                        distribution = Categorical(probs=final_policy_distribution)
+                        batch_action = distribution.sample()
+                        batched_log_prob = distribution.log_prob(batch_action)
+                        for batch_ix in range(0, num_left_batches):
+                            action = batch_action[batch_ix].item()
+                            log_prob = batched_log_prob[batch_ix]
+                            actions[agent][batch_ix] = action
+                            actual_batch_number = left_batches[batch_ix]
+                            memory[agent][actual_batch_number].action = action
+                            memory[agent][actual_batch_number].log_prob = log_prob
+                            memory[agent][actual_batch_number].policy_distribution = final_policy_distribution[batch_ix]
+
+                    next_observations, rewards, dones = self.batch_step(actions, step, time_penalty, early_reward_benefit)
+                    self.add_rewards_to_memory(policies, memory, rewards, num_left_batches, left_batches)
+                    observations = self.conclude_step(next_observations, dones)
+
+                    if render:
+                        self.envs[0].render()
+
+                for agent in self.AGENT_NAMES:
+                    optimizers[agent].zero_grad(set_to_none=False)
+                    policies[agent].set_batched_storage(self.BATCH_SIZE)
+
+                epoch_data, team_iterations = self.compute_epoch_data(policies, verbose=True, eval=True)
+                summary_stats.append(epoch_data)
+                if verbose:
+                    print('\t *Team Mean Iterations: %s' % (team_iterations))
+
+                self.conclude_epoch(policies, optimizers, schedulers, eval=True)
+                if not eval and consensus_update:
+                    self.consensus_update(policies)
+
+        return policies, optimizers, summary_stats
+
 
 class PistonEnv_MOA(BatchEnv):
     def __init__(self, batch: int, env_params: Dict, seed=None):
