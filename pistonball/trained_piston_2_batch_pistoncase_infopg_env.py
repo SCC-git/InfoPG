@@ -1,5 +1,6 @@
 from typing import Optional, Dict, List
 from alex_net import Encoder
+from batch_eval_pistoncase_infopg_env import create_policies_from_experiment
 from policy_pistoncase import PistonPolicyCASE
 from policy_base import Experience
 from batch_piston_env import PistonEnv
@@ -66,14 +67,8 @@ class Piston5AgentCase(PistonEnv):
                         observations[agent] = alex_encoder(observations[agent])
 
                 policy_initial = {}
-                rand_actions = torch.tensor([random.randint(0, 2) for _ in range(0, num_left_batches)])
                 for agent in self.AGENT_NAMES:
-                    if agent == 'piston_2':
-                        initial_policy_distribution = torch.zeros((num_left_batches, 10)).to(device) #batchxpolicy latent_size
-                        initial_policy_distribution[:, rand_actions] = 1
-                        state_val = torch.zeros((num_left_batches,1)).to(device)
-                    else:
-                        initial_policy_distribution, state_val = policies[agent].forward(observations[agent], 0, None)
+                    initial_policy_distribution, state_val = policies[agent].forward(observations[agent], 0, None)
                     for batch_ix in range(0, num_left_batches):
                         memory[agent][left_batches[batch_ix]].state_val = state_val[batch_ix]
                     policy_initial[agent] = initial_policy_distribution
@@ -81,9 +76,6 @@ class Piston5AgentCase(PistonEnv):
                 for k in range(0, k_levels):
                     output_dist = {}
                     for agent_ix, agent in enumerate(self.AGENT_NAMES):
-                        if agent == 'piston_2':
-                            output_dist[agent] = policy_initial[agent]
-                            continue
                         if communicate:
                             batched_neighbors = [[] for _ in range(0, num_left_batches)] # for each batch, the policies of agent
                             for batch_ix in range(0, num_left_batches):
@@ -100,17 +92,11 @@ class Piston5AgentCase(PistonEnv):
 
                 actions = {agent_name: [-1 for _ in range(0, num_left_batches)] for agent_name in self.AGENT_NAMES}
                 for agent in self.AGENT_NAMES:
-                    if agent == 'piston_2':
-                        batch_action = rand_actions
-                        batched_log_prob = torch.tensor([0 for _ in range(0, num_left_batches)])
-                        final_policy_distribution = policies[agent].forward(policy_initial[agent], 2, None)
-                        final_policy_distribution = final_policy_distribution.to('cpu')
-                    else:
-                        final_policy_distribution = policies[agent].forward(policy_initial[agent], 2, None)
-                        final_policy_distribution = final_policy_distribution.to('cpu')
-                        distribution = Categorical(probs=final_policy_distribution)
-                        batch_action = distribution.sample()
-                        batched_log_prob = distribution.log_prob(batch_action)
+                    final_policy_distribution = policies[agent].forward(policy_initial[agent], 2, None)
+                    final_policy_distribution = final_policy_distribution.to('cpu')
+                    distribution = Categorical(probs=final_policy_distribution)
+                    batch_action = distribution.sample()
+                    batched_log_prob = distribution.log_prob(batch_action)
 
                     for batch_ix in range(0, num_left_batches):
                         action = batch_action[batch_ix].item()
@@ -121,7 +107,7 @@ class Piston5AgentCase(PistonEnv):
                         memory[agent][actual_batch_number].log_prob = log_prob
                         memory[agent][actual_batch_number].policy_distribution = final_policy_distribution[batch_ix]
 
-                next_observations, rewards, dones = self.batch_step(actions, step, time_penalty, early_reward_benefit)
+                next_observations, rewards, dones = self.adv_piston2_batch_step(actions, step, time_penalty, early_reward_benefit)
 
                 for agent in self.AGENT_NAMES:
                     for batch_ix in range(0, num_left_batches):
@@ -149,7 +135,7 @@ class Piston5AgentCase(PistonEnv):
                 #print('Performing backprop on %s' % (agent))
                 if verbose:
                     print('\t Reward for %s: %f' % (agent, mean_reward))
-                if agent != 'piston_2':
+                if agent == 'piston_2':
                     loss.backward(retain_graph=True)
             summary_stats.append(epoch_data)
             if verbose:
@@ -168,10 +154,10 @@ class Piston5AgentCase(PistonEnv):
                             neighbors_vnet.append(vnet_copies['piston_%d' % (agent_num + i)])
                     policies[agent].consensus_update(neighbors_vnet)
 
-            for agent in self.AGENT_NAMES:
-                optimizers[agent].step()
-                if schedulers is not None:
-                    schedulers[agent].step()
+            #for agent in self.AGENT_NAMES:
+            optimizers['piston_2'].step()
+            if schedulers is not None:
+                schedulers['piston_2'].step()
 
             for agent in self.AGENT_NAMES:
                 policies[agent].clear_memory()
@@ -192,8 +178,30 @@ if __name__ == '__main__':
     policy_latent_size = 20
     action_space = 3
     lr = 0.001
-    epochs = 1000
+    epochs = 100
     batch = 2
+
+    hyper_params = {
+        'encoding_size': 300,
+        'policy_latent_size': 20,
+        'lr': 0.001,
+        'epochs': 100,
+        'n_agents': 5,
+        'max_cycles': 200,
+        'max_grad_norm': 0.75,
+        'communicate': True,
+        'transfer_experiment': {
+            # 'name': '2023-03-14 19_01_25infopg',
+            'name': '2023-03-20 18_24_09infopg',
+            'order': [0, 1, 2, 3, 4]
+        },
+        'time_penalty': 0.007,
+        'early_reward_benefit': 0.25,
+        'batch_size': 2,
+        'k-levels': 1,
+        'scheduler': None,
+        'adv': 'normal',
+    }
 
     env_params = {
         'n_pistons': n_agents, 'local_ratio': 1.0, 'time_penalty': 7e-3, 'continuous': False,
@@ -214,8 +222,12 @@ if __name__ == '__main__':
     }
 
     env = Piston5AgentCase(batch, env_params)
-    policies = {agent: PistonPolicyCASE(device) for agent in env.get_agent_names()}
-    optimizers = {agent: optim.Adam(policies[agent].parameters(), lr) for agent in env.get_agent_names()}
+
+    if hyper_params['transfer_experiment'] is not None:
+        policies, optimizers = create_policies_from_experiment(hyper_params, device)
+    else:
+        policies = {agent: PistonPolicyCASE(device) for agent in env.get_agent_names()}
+        optimizers = {agent: optim.Adam(policies[agent].parameters(), lr) for agent in env.get_agent_names()}
     schedulers = {agent: optim.lr_scheduler.MultiStepLR(optimizer=optimizers[agent], milestones=[125, 600], gamma=0.99) for agent in env.get_agent_names()}
     policies, optimizers, summary_stats = env.loop(user_params, policies, optimizers, None)
 

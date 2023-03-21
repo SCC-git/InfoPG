@@ -140,6 +140,33 @@ class BatchEnv(ABC):
                 dones[agent][batch_ix] = dones_temp[agent]
         return next_observations, rewards, dones
 
+    def adv_piston2_batch_step(self, actions: Dict[str, List], step_num: int, time_penalty: float, early_reward_benefit: float):
+        num_left_batches = np.count_nonzero(self.DONE_ENVS == False)
+        left_batches = np.where(self.DONE_ENVS == False)[0]
+
+        next_observations = {agent: np.zeros((num_left_batches,) + self.OBS_SHAPE) for agent in self.AGENT_NAMES}
+        rewards = {agent: np.zeros((num_left_batches)) for agent in self.AGENT_NAMES}
+        dones = {agent: np.zeros((num_left_batches), dtype=np.bool) for agent in self.AGENT_NAMES}
+        for batch_ix in range(0, num_left_batches):
+            actual_batch_ix = left_batches[batch_ix]
+            obs_temp, rewards_temp, dones_temp, _ = self.envs[actual_batch_ix].step({agent: batched_action[batch_ix] for agent, batched_action in actions.items()})
+            batch_finished = all(dones_temp.values())
+            if batch_finished:
+                self.DONE_ENVS[actual_batch_ix] = True
+            victim_rewards = [] # Will be summed and inversed to get adversarial agents reward
+            for agent in self.AGENT_NAMES:
+                if agent != 'piston_2':
+                    reward = (rewards_temp[agent] / self.REWARD_SCALE) - abs(time_penalty)
+                    if self.DONE_ENVS[actual_batch_ix] and step_num < 0.5 * self.MAX_CYCLES:
+                        reward += early_reward_benefit
+                    rewards[agent][batch_ix] = reward
+                    victim_rewards.append(reward)
+
+                next_observations[agent][batch_ix] = obs_temp[agent]
+                dones[agent][batch_ix] = dones_temp[agent]
+            rewards['piston_2'][batch_ix] = -1 * (sum(victim_rewards))
+        return next_observations, rewards, dones
+
     def consensus_update(self, policies):
         vnet_copies = {agent: policies[agent].policy.v_net.state_dict() for agent in policies.keys()}
         for agent_ix in range(0, self.N_AGENTS):
