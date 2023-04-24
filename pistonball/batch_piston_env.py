@@ -10,7 +10,7 @@ import torch.optim as optim
 class PistonEnv(BatchEnv):
     def __init__(self, batch: int, env_params: Dict, seed=None):
         print('**Using Normal InfoPG Piston Env (for consensus, a2c, infopg)')
-        super(PistonEnv, self).__init__('pistonball_v4', batch, env_params, seed)
+        super(PistonEnv, self).__init__('pistonball_v4', batch, env_params, seed=seed)
 
     def update_adj_matrix(self):
         pass
@@ -94,7 +94,7 @@ class PistonEnv(BatchEnv):
                 optimizers[agent].zero_grad(set_to_none=False)
                 policies[agent].set_batched_storage(self.BATCH_SIZE)
 
-            epoch_data, team_iterations = self.compute_epoch_data(policies, verbose=True)
+            epoch_data, team_iterations = self.compute_epoch_data(policies, verbose=verbose)
             summary_stats.append(epoch_data)
             if verbose:
                 print('\t *Team Mean Iterations: %s' % (team_iterations))
@@ -185,6 +185,7 @@ class PistonEnv(BatchEnv):
                     observations = self.conclude_step(next_observations, dones)
 
                     if render:
+                        assert self.BATCH_SIZE == 1, 'BATCH SIZE MUST BE 1 FOR RENDERING'
                         self.envs[0].render()
 
                 for agent in self.AGENT_NAMES:

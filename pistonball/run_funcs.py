@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 
-def test_piston_with_hyperparams(hyper_params, verbose, eval = False, render = False):
+def test_piston_with_hyperparams(hyper_params, verbose, eval=False, render=False):
     if torch.cuda.is_available():
         device=torch.device("cuda:0")
         print('**Using: ', torch.cuda.get_device_name(device))
@@ -68,7 +68,10 @@ def test_piston_with_hyperparams(hyper_params, verbose, eval = False, render = F
         'k-levels': k_levels,
     }
 
-    env = PistonEnv(batch_size, env_params)
+    if 'seed' in hyper_params.keys():
+        env = PistonEnv(batch_size, env_params, seed=hyper_params['seed'])
+    else:
+        env = PistonEnv(batch_size, env_params)
     if hyper_params['transfer_experiment'] is not None:
         policies, optimizers = create_policies_from_experiment(hyper_params, device)
     else:
@@ -102,7 +105,8 @@ def create_policies_from_experiment(hyper_params, device):
     if len(piston_order) != hyper_params['n_agents']:
         raise Exception('Must put in an ordering that is equal to the number of required agents')
     lr = hyper_params['lr']
-    files = os.listdir(os.path.join('..', 'experiments', 'final_models', 'pistonball', experiment_name))
+    files = os.listdir(experiment_name)
+    # files = os.listdir(os.path.join('..', 'experiments', 'final_models', 'pistonball', experiment_name))
     files = list(filter(lambda x: '.pt' in x, files))
     if len(set(files)) < len(set(piston_order)):
         raise Exception("Agents aren't the ones from the transfer experiments")
@@ -112,7 +116,7 @@ def create_policies_from_experiment(hyper_params, device):
     action_space = 3
     for i in range(0, len(piston_order)):
         agent_name = piston_order[i]
-        data = torch.load(os.path.join('..', 'experiments', 'final_models', 'pistonball', experiment_name, 'piston_%s.pt' % (agent_name)), device)
+        data = torch.load(os.path.join(experiment_name, 'piston_%s.pt' % (agent_name)), device)
         print('giving %s, %s experimental policy' % ('piston_%s' % (i), agent_name))
         policies['piston_%s' % (i)] = PistonPolicy(encoding_size, policy_latent_size, action_space, device, 'normal',
                                                    model_state_dict=data['policy'])
