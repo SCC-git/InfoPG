@@ -194,7 +194,7 @@ if __name__ == '__main__':
     policy_latent_size = 20
     action_space = 3
     lr = 0.001
-    epochs = 500
+    epochs = 1000
     batch = 2
 
     hyper_params = {
@@ -210,7 +210,7 @@ if __name__ == '__main__':
             # 'name': '2023-03-14 19_01_25infopg',
             # 'name': '2023-03-20 18_24_09infopg',
             # 'name': './experiments/case_test/2023-03-20 18_24_09infopg',
-            'name': '../experiments/final_models/pistonball/5agent_infopg_nocritic(k=1)',
+            'name': '../experiments/final_models/pistonball/5agent_infopg(k=1)',
             'order': [0, 1, 2, 3, 4]
         },
         'time_penalty': 0.007,
@@ -219,7 +219,7 @@ if __name__ == '__main__':
         'k-levels': 1,
         'scheduler': None,
         'adv': 'normal',
-        'seed': 15
+        'seed': 1
     }
 
     env_params = {
@@ -248,9 +248,9 @@ if __name__ == '__main__':
     if hyper_params['transfer_experiment'] is not None:
         policies, optimizers = create_policies_from_experiment(hyper_params, device)
     else:
-        policies = {agent: PistonPolicy(encoding_size, policy_latent_size, action_space, device, adv_type="clamped_q") for agent in env.get_agent_names()}
+        policies = {agent: PistonPolicy(encoding_size, policy_latent_size, action_space, device, adv_type="normal") for agent in env.get_agent_names()}
         optimizers = {agent: optim.Adam(policies[agent].parameters(), lr) for agent in env.get_agent_names()}
-    policies['piston_2'] = PistonPolicy(encoding_size, policy_latent_size, action_space, device, adv_type="clamped_q")
+    policies['piston_2'] = PistonPolicy(encoding_size, policy_latent_size, action_space, device, adv_type="normal")
     optimizers['piston_2'] = optim.Adam(policies['piston_2'].parameters(), lr)
     schedulers = {agent: optim.lr_scheduler.MultiStepLR(optimizer=optimizers[agent], milestones=[125, 600], gamma=0.99) for agent in env.get_agent_names()}
     policies, optimizers, summary_stats = env.loop(user_params, policies, optimizers, None)

@@ -125,12 +125,12 @@ class Piston5AgentByz(PistonEnv):
 
                 self.update_adj_matrix()
 
-            secondary_params = {}
-            for agent in self.AGENT_NAMES:
-                secondary_params[agent] = policies[agent].policy.state_dict().__str__()
-
-            for agent in self.AGENT_NAMES:
-                print(f"\t {agent} params unchanged: {initial_params[agent] == secondary_params[agent]}")
+            # secondary_params = {}
+            # for agent in self.AGENT_NAMES:
+            #     secondary_params[agent] = policies[agent].policy.state_dict().__str__()
+            #
+            # for agent in self.AGENT_NAMES:
+            #     print(f"\t {agent} params unchanged: {initial_params[agent] == secondary_params[agent]}")
 
             for agent in self.AGENT_NAMES:
                 optimizers[agent].zero_grad(set_to_none=False)
@@ -147,28 +147,28 @@ class Piston5AgentByz(PistonEnv):
                 #print('Performing backprop on %s' % (agent))
                 if verbose:
                     print('\t Reward for %s: %f' % (agent, mean_reward))
-                if agent == 'piston_2':
-                    loss.backward(retain_graph=True)
+                # if agent == 'piston_2':
+                #     loss.backward(retain_graph=True)
             summary_stats.append(epoch_data)
             if verbose:
                 print('\t *Team Mean Iterations: %s' % (iterations/self.N_AGENTS))
 
-            for agent in self.AGENT_NAMES:
-                torch.nn.utils.clip_grad_norm_(policies[agent].parameters(), max_grad_norm)
-
-            if consensus_update:
-                vnet_copies = {agent: policies[agent].policy.v_net.state_dict() for agent in policies.keys()}
-                for agent in policies.keys():
-                    neighbors_vnet = []
-                    agent_num = int(agent.split('_')[1])
-                    for i in [-1, 1]:
-                        if 0 <= agent_num + i < self.N_AGENTS:
-                            neighbors_vnet.append(vnet_copies['piston_%d' % (agent_num + i)])
-                    policies[agent].consensus_update(neighbors_vnet)
-
-            optimizers['piston_2'].step()
-            if schedulers is not None:
-                schedulers['piston_2'].step()
+            # for agent in self.AGENT_NAMES:
+            #     torch.nn.utils.clip_grad_norm_(policies[agent].parameters(), max_grad_norm)
+            #
+            # if consensus_update:
+            #     vnet_copies = {agent: policies[agent].policy.v_net.state_dict() for agent in policies.keys()}
+            #     for agent in policies.keys():
+            #         neighbors_vnet = []
+            #         agent_num = int(agent.split('_')[1])
+            #         for i in [-1, 1]:
+            #             if 0 <= agent_num + i < self.N_AGENTS:
+            #                 neighbors_vnet.append(vnet_copies['piston_%d' % (agent_num + i)])
+            #         policies[agent].consensus_update(neighbors_vnet)
+            #
+            # optimizers['piston_2'].step()
+            # if schedulers is not None:
+            #     schedulers['piston_2'].step()
 
             for agent in self.AGENT_NAMES:
                 policies[agent].clear_memory()
@@ -194,7 +194,7 @@ if __name__ == '__main__':
     policy_latent_size = 20
     action_space = 3
     lr = 0.001
-    epochs = 500
+    epochs = 200
     batch = 2
 
     hyper_params = {
@@ -209,8 +209,8 @@ if __name__ == '__main__':
         'transfer_experiment': {
             # 'name': '2023-03-14 19_01_25infopg',
             # 'name': '2023-03-20 18_24_09infopg',
-            # 'name': './experiments/case_test/2023-03-20 18_24_09infopg',
-            'name': '../experiments/final_models/pistonball/5agent_infopg_nocritic(k=1)',
+            'name': './experiments/case_test/2023-04-19 17_53_22infopg',
+            # 'name': '../experiments/final_models/pistonball/5agent_infopg_nocritic(k=1)',
             'order': [0, 1, 2, 3, 4]
         },
         'time_penalty': 0.007,
@@ -219,7 +219,7 @@ if __name__ == '__main__':
         'k-levels': 1,
         'scheduler': None,
         'adv': 'normal',
-        'seed': 15
+        'seed': 10
     }
 
     env_params = {
@@ -250,13 +250,13 @@ if __name__ == '__main__':
     else:
         policies = {agent: PistonPolicy(encoding_size, policy_latent_size, action_space, device, adv_type="clamped_q") for agent in env.get_agent_names()}
         optimizers = {agent: optim.Adam(policies[agent].parameters(), lr) for agent in env.get_agent_names()}
-    policies['piston_2'] = PistonPolicy(encoding_size, policy_latent_size, action_space, device, adv_type="clamped_q")
-    optimizers['piston_2'] = optim.Adam(policies['piston_2'].parameters(), lr)
+    # policies['piston_2'] = PistonPolicy(encoding_size, policy_latent_size, action_space, device, adv_type="clamped_q")
+    # optimizers['piston_2'] = optim.Adam(policies['piston_2'].parameters(), lr)
     schedulers = {agent: optim.lr_scheduler.MultiStepLR(optimizer=optimizers[agent], milestones=[125, 600], gamma=0.99) for agent in env.get_agent_names()}
     policies, optimizers, summary_stats = env.loop(user_params, policies, optimizers, None)
 
     experiment_name = datetime.datetime.now().strftime("%Y-%m-%d %H_%M_%S")
-    path = os.path.join('experiments', 'case_test', experiment_name + 'infopg')
+    path = os.path.join('experiments', 'case_test', experiment_name + 'infopg_eval')
     os.makedirs(path)
 
     with open('%s.pkl' % (os.path.join(path, 'data')), 'wb') as f:
@@ -265,8 +265,8 @@ if __name__ == '__main__':
     with open('%s.txt' % (os.path.join(path, 'hyper_params')), 'w') as f:
         f.write(json.dumps(hyper_params))
 
-    for agent in policies.keys():
-        torch.save({
-            'policy': policies[agent].state_dict(),
-            'optimizer': optimizers[agent].state_dict()
-        }, os.path.join(path, agent+'.pt'))
+    # for agent in policies.keys():
+    #     torch.save({
+    #         'policy': policies[agent].state_dict(),
+    #         'optimizer': optimizers[agent].state_dict()
+    #     }, os.path.join(path, agent+'.pt'))

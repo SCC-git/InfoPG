@@ -12,10 +12,11 @@ import random
 import os
 import pickle
 import datetime
+import json
 
 class Piston5AgentCase(PistonEnv):
     def __init__(self, batch: int, env_params: Dict, seed=None):
-        super().__init__(batch, env_params, seed)
+        super().__init__(batch, env_params, seed=seed)
 
     def loop(self, user_params: Dict, policies: Dict[str, PistonPolicyCASE], optimizers: Dict[str, torch.optim.Optimizer], schedulers):
         """
@@ -178,21 +179,22 @@ if __name__ == '__main__':
     policy_latent_size = 20
     action_space = 3
     lr = 0.001
-    epochs = 100
+    epochs = 500
     batch = 2
 
     hyper_params = {
         'encoding_size': 300,
         'policy_latent_size': 20,
         'lr': 0.001,
-        'epochs': 100,
+        'epochs': 500,
         'n_agents': 5,
         'max_cycles': 200,
         'max_grad_norm': 0.75,
         'communicate': True,
         'transfer_experiment': {
             # 'name': '2023-03-14 19_01_25infopg',
-            'name': '2023-03-20 18_24_09infopg',
+            # 'name': '2023-03-20 18_24_09infopg',
+            'name': './experiments/case_test/2023-03-20 18_24_09infopg',
             'order': [0, 1, 2, 3, 4]
         },
         'time_penalty': 0.007,
@@ -201,6 +203,7 @@ if __name__ == '__main__':
         'k-levels': 1,
         'scheduler': None,
         'adv': 'normal',
+        'seed': 10
     }
 
     env_params = {
@@ -221,13 +224,18 @@ if __name__ == '__main__':
         'k-levels': 1
     }
 
-    env = Piston5AgentCase(batch, env_params)
+    if 'seed' in hyper_params.keys():
+        env = Piston5AgentCase(batch, env_params, seed=hyper_params['seed'])
+    else:
+        env = Piston5AgentCase(batch, env_params)
 
     if hyper_params['transfer_experiment'] is not None:
         policies, optimizers = create_policies_from_experiment(hyper_params, device)
     else:
         policies = {agent: PistonPolicyCASE(device) for agent in env.get_agent_names()}
         optimizers = {agent: optim.Adam(policies[agent].parameters(), lr) for agent in env.get_agent_names()}
+    policies['piston_2'] = PistonPolicyCASE(device)
+    optimizers['piston_2'] = optim.Adam(policies['piston_2'].parameters(), lr)
     schedulers = {agent: optim.lr_scheduler.MultiStepLR(optimizer=optimizers[agent], milestones=[125, 600], gamma=0.99) for agent in env.get_agent_names()}
     policies, optimizers, summary_stats = env.loop(user_params, policies, optimizers, None)
 
@@ -237,6 +245,9 @@ if __name__ == '__main__':
 
     with open('%s.pkl' % (os.path.join(path, 'data')), 'wb') as f:
         pickle.dump(summary_stats, f)
+
+    with open('%s.txt' % (os.path.join(path, 'hyper_params')), 'w') as f:
+        f.write(json.dumps(hyper_params))
 
     for agent in policies.keys():
         torch.save({
