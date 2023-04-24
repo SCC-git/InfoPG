@@ -11,6 +11,7 @@ import random
 import os
 import pickle
 import datetime
+import json
 
 
 class Piston5AgentCase(PistonEnv):
@@ -158,6 +159,8 @@ class Piston5AgentCase(PistonEnv):
                     #     loss.backward(retain_graph=True)
                 summary_stats.append(epoch_data)
 
+
+
                 if verbose:
                     print('\t *Team Mean Iterations: %s' % (iterations/self.N_AGENTS))
 
@@ -192,7 +195,7 @@ def create_policies_from_experiment(hyper_params, device):
     if len(piston_order) != hyper_params['n_agents']:
         raise Exception('Must put in an ordering that is equal to the number of required agents')
     lr = hyper_params['lr']
-    files = os.listdir(os.path.join(experiment_name))
+    files = os.listdir(os.path.join('experiments', 'case_test', experiment_name))
     files = list(filter(lambda x: '.pt' in x, files))
     if len(set(files)) < len(set(piston_order)):
         raise Exception("Agents aren't the ones from the transfer experiments")
@@ -202,7 +205,7 @@ def create_policies_from_experiment(hyper_params, device):
     action_space = 3
     for i in range(0, len(piston_order)):
         agent_name = piston_order[i]
-        data = torch.load(os.path.join(experiment_name, 'piston_%s.pt' % (agent_name)), device)
+        data = torch.load(os.path.join('experiments', 'case_test', experiment_name, 'piston_%s.pt' % (agent_name)), device)
         print('giving %s, %s experimental policy' % ('piston_%s' % (i), agent_name))
         policies['piston_%s' % (i)] = PistonPolicyCASE(device, model_state_dict=data['policy'])
         optimizers['piston_%s' % (i)] = optim.Adam(policies['piston_%s' % (i)].parameters(), lr)
@@ -284,8 +287,11 @@ if __name__ == '__main__':
     with open('%s.pkl' % (os.path.join(path, 'data')), 'wb') as f:
         pickle.dump(summary_stats, f)
 
-    # for agent in policies.keys():
-    #     torch.save({
-    #         'policy': policies[agent].state_dict(),
-    #         'optimizer': optimizers[agent].state_dict()
-    #     }, os.path.join(path, agent+'.pt'))
+    with open('%s.txt' % (os.path.join(path, 'hyper_params')), 'w') as f:
+        f.write(json.dumps(hyper_params))
+
+    for agent in policies.keys():
+        torch.save({
+            'policy': policies[agent].state_dict(),
+            'optimizer': optimizers[agent].state_dict()
+        }, os.path.join(path, agent+'.pt'))
